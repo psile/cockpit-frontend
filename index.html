@@ -511,7 +511,7 @@ body {
     <div class="login-form">
       <div>
         <label>后端记忆服务地址</label>
-        <input id="apiUrl" value="http://47.115.228.135/memory" placeholder="http://IP/memory">
+        <input id="apiUrl" value="http://10.133.72.161:20142"  placeholder="http://IP:端口">
       </div>
       <div>
         <label>LLM 代理地址（本机自动启动）</label>
@@ -645,6 +645,18 @@ body {
 <div class="toast" id="toast"></div>
 
 <script>
+// ── 集中配置 ──
+const DEFAULT_CONFIG = {
+  memoryBackendUrl: 'http://10.133.72.161:20142',
+  llmProxyUrl: 'http://127.0.0.1:8767'
+};
+
+// 页面加载时用配置填充输入框
+(function initDefaults() {
+  document.getElementById('apiUrl').value = DEFAULT_CONFIG.memoryBackendUrl;
+  document.getElementById('llmProxyUrlInput').value = DEFAULT_CONFIG.llmProxyUrl;
+})();
+
 // ── 全局状态 ──
 let state = {
   apiUrl: '',

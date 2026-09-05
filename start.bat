@@ -9,7 +9,7 @@ echo   DesayMem Cockpit Frontend
 echo ========================================
 echo.
 
-REM Check Python
+REM ── Check Python ──
 where python >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Python not found. Please install Python 3.10+
@@ -17,57 +17,76 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-REM Check .env
+REM ── Check .env, create from .env.example if missing ──
 if not exist ".env" (
-    echo [WARNING] .env not found. Creating from template...
-    (
-        echo LLM_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-        echo LLM_MODEL=qwen-plus
-        echo LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-        echo PROXY_PORT=8767
-    ) > .env
-    echo [INFO] .env created. Please edit it with your DashScope API Key.
+    if exist ".env.example" (
+        echo [INFO] .env not found. Copying from .env.example...
+        copy /y ".env.example" ".env" >nul
+    ) else (
+        echo [INFO] .env not found. Creating with defaults...
+        (
+            echo LLM_API_KEY=请填写与服务器vLLM一致的API_Key
+            echo LLM_MODEL=memory-llm
+            echo LLM_BASE_URL=http://10.133.72.161:20140/v1
+            echo PROXY_PORT=8767
+        ) > .env
+    )
+    echo [WARNING] .env created. Please edit it with the correct API Key.
     echo.
     type .env
     echo.
     pause
-    exit /b 0
 )
 
-REM Check if LLM_API_KEY is still placeholder
-findstr "xxxxxxxx" .env >nul 2>&1
+REM ── Check API Key is not placeholder ──
+findstr /c:"请填写" .env >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     echo [WARNING] LLM_API_KEY in .env is still placeholder!
-    echo [INFO] Please edit .env with your real DashScope API Key.
+    echo [INFO] Please edit .env with the real API Key.
     echo.
     pause
 )
 
-REM Install deps if needed
+REM ── Install deps if needed ──
 pip show fastapi >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [INFO] Installing dependencies...
-    pip install fastapi uvicorn httpx pydantic
+    pip install -r requirements.txt
 )
 
-REM Start LLM proxy in background
-echo [INFO] Starting LLM proxy on port 8767...
-start /min "LLM Proxy" python llm_proxy.py
+REM ── Check port 8767 (LLM proxy) ──
+netstat -ano | findstr ":8767 " | findstr "LISTENING" >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [INFO] Starting LLM proxy on port 8767...
+    start /min "LLM Proxy" python llm_proxy.py
+    timeout /t 3 /nobreak >nul
+) else (
+    echo [INFO] Port 8767 already in use, skipping LLM proxy start.
+)
 
-REM Wait for proxy to start
-timeout /t 3 /nobreak >nul
+REM ── Check port 8080 (static server) ──
+netstat -ano | findstr ":8080 " | findstr "LISTENING" >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [INFO] Starting static file server on port 8080...
+    start /min "Frontend Server" python -m http.server 8080 --bind 127.0.0.1
+    timeout /t 2 /nobreak >nul
+) else (
+    echo [INFO] Port 8080 already in use, skipping static server start.
+)
 
-REM Open browser
+REM ── Open browser ──
 echo [INFO] Opening browser...
-start "" "index.html"
+start "" "http://127.0.0.1:8080"
 
 echo.
 echo ========================================
-echo   Frontend is running!
-echo   - LLM Proxy: http://127.0.0.1:8767
-echo   - Backend:   http://47.115.228.135/memory
+echo   Frontend:       http://127.0.0.1:8080
+echo   LLM Proxy:      http://127.0.0.1:8767
+echo   Memory Backend: http://10.133.72.161:20142
+echo   LLM Server:     http://10.133.72.161:20140/v1
 echo ========================================
 echo.
-echo Press Ctrl+C to stop.
+echo Press Ctrl+C to stop the static server.
+echo Close the "LLM Proxy" window to stop the proxy.
 echo.
 pause

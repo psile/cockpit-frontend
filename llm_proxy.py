@@ -44,6 +44,11 @@ COCKPIT_ANSWER_PROMPT = """\
 - 回复控制在 1-2 句话，口语化，适合语音播报
 """
 
+# ── Defaults (point to company server vLLM) ──
+DEFAULT_LLM_MODEL = "memory-llm"
+DEFAULT_LLM_BASE_URL = "http://10.133.72.161:20140/v1"
+DEFAULT_PROXY_PORT = "8767"
+
 
 class ChatProxyRequest(BaseModel):
     messages: list[dict]
@@ -60,14 +65,26 @@ app.add_middleware(
 )
 
 
+def _mask_key(key: str) -> str:
+    """Mask API key for safe logging — show only first/last 4 chars."""
+    if not key or len(key) <= 12:
+        return "***" if key else "(empty)"
+    return key[:4] + "..." + key[-4:]
+
+
 @app.post("/chat")
 async def chat(req: ChatProxyRequest) -> dict:
     llm_api_key = os.getenv("LLM_API_KEY", "")
-    llm_model = os.getenv("LLM_MODEL", "qwen-plus")
-    llm_base_url = os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    llm_model = os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL)
+    llm_base_url = os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL)
 
+    # ── Error: API Key not configured ──
     if not llm_api_key:
-        return {"reply": "(LLM_API_KEY 未配置，请编辑 .env 文件)", "model": llm_model}
+        return {
+            "reply": "(LLM_API_KEY 未配置，请在 .env 中设置与服务器 vLLM 一致的 API Key)",
+            "model": llm_model,
+            "error": "api_key_missing",
+        }
 
     # Step 1: prepend system prompt (Mem0 pattern: _prepare_messages)
     prepared = [{"role": "system", "content": COCKPIT_ANSWER_PROMPT}]
@@ -87,11 +104,12 @@ async def chat(req: ChatProxyRequest) -> dict:
         memories_text = "\n".join(f"- {m}" for m in req.memory_context)
         prepared.append({"role": "user", "content": f"- 相关历史记忆:\n{memories_text}"})
 
-    # Step 3: call LLM (DashScope OpenAI-compatible)
+    # Step 3: call LLM (OpenAI-compatible endpoint on company server)
+    url = f"{llm_base_url}/chat/completions"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{llm_base_url}/chat/completions",
+                url,
                 headers={
                     "Authorization": f"Bearer {llm_api_key}",
                     "Content-Type": "application/json",
@@ -104,17 +122,59 @@ async def chat(req: ChatProxyRequest) -> dict:
                     "top_p": 0.8,
                 },
             )
-        resp.raise_for_status()
+    except httpx.ConnectTimeout:
+        return {"reply": "(连接超时：无法连接服务器模型服务，请检查网络或服务器状态)", "model": llm_model, "error": "connect_timeout"}
+    except httpx.ConnectError as e:
+        return {"reply": "(连接被拒绝：服务器模型服务可能未启动，请检查 10.133.72.161:20140)", "model": llm_model, "error": "connect_refused"}
+    except httpx.RequestError as e:
+        return {"reply": f"(网络请求异常: {e})", "model": llm_model, "error": "network_error"}
+
+    # ── Error: HTTP non-2xx ──
+    if not resp.is_success:
+        # API Key invalid → 401/403; server error → 5xx
+        hint = ""
+        if resp.status_code in (401, 403):
+            hint = "（API Key 可能不正确或与服务器 vLLM 不一致，请检查 .env 中 LLM_API_KEY）"
+        elif resp.status_code >= 500:
+            hint = "（服务器模型服务内部错误，请检查 vLLM 状态）"
+        try:
+            err_body = resp.text[:300]
+        except Exception:
+            err_body = ""
+        return {
+            "reply": f"(HTTP {resp.status_code}: {hint}{err_body})",
+            "model": llm_model,
+            "error": f"http_{resp.status_code}",
+        }
+
+    # ── Error: invalid JSON ──
+    try:
         data = resp.json()
-        reply = data["choices"][0]["message"]["content"]
-        return {"reply": reply, "model": llm_model}
-    except Exception as e:
-        return {"reply": f"(LLM 调用失败: {e})", "model": llm_model}
+    except Exception:
+        return {"reply": "(服务器返回了非 JSON 响应，可能模型服务异常)", "model": llm_model, "error": "invalid_json"}
+
+    # ── Error: missing choices ──
+    choices = data.get("choices")
+    if not choices or not isinstance(choices, list) or len(choices) == 0:
+        return {"reply": "(服务器响应缺少 choices，模型可能未正常生成)", "model": llm_model, "error": "missing_choices"}
+
+    try:
+        reply = choices[0]["message"]["content"]
+    except (KeyError, TypeError, IndexError):
+        return {"reply": "(服务器响应格式异常，无法提取回复内容)", "model": llm_model, "error": "malformed_response"}
+
+    return {"reply": reply, "model": llm_model}
 
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "model": os.getenv("LLM_MODEL", "qwen-plus")}
+    api_key = os.getenv("LLM_API_KEY", "")
+    return {
+        "status": "ok" if api_key else "no_api_key",
+        "model": os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL),
+        "base_url": os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL),
+        "api_key": _mask_key(api_key),
+    }
 
 
 def main() -> None:
@@ -122,15 +182,16 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Cockpit LLM Proxy")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8767)
+    parser.add_argument("--port", type=int, default=int(os.getenv("PROXY_PORT", DEFAULT_PROXY_PORT)))
     args = parser.parse_args()
 
     import uvicorn
 
+    api_key = os.getenv("LLM_API_KEY", "")
     print(f"LLM Proxy starting on http://{args.host}:{args.port}")
-    print(f"  Model: {os.getenv('LLM_MODEL', 'qwen-plus')}")
-    print(f"  API Key: {'configured' if os.getenv('LLM_API_KEY') else 'NOT SET — edit .env'}")
-    print(f"  Base URL: {os.getenv('LLM_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')}")
+    print(f"  Model:   {os.getenv('LLM_MODEL', DEFAULT_LLM_MODEL)}")
+    print(f"  Base URL: {os.getenv('LLM_BASE_URL', DEFAULT_LLM_BASE_URL)}")
+    print(f"  API Key: {'configured (' + _mask_key(api_key) + ')' if api_key else 'NOT SET — edit .env'}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 

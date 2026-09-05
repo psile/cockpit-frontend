@@ -2,11 +2,37 @@
 
 车机记忆系统前端，与 DesayMem 后端完全分离，互不影响。
 
+## 整体调用架构
+
+```
+浏览器前端 (http://127.0.0.1:8080)
+├── 记忆读写 → http://10.133.72.161:20142
+└── 对话生成 → http://127.0.0.1:8767
+    └── Qwen vLLM → http://10.133.72.161:20140/v1
+```
+
+- **浏览器**直接访问服务器记忆后端 (20142) 进行记忆读写
+- **浏览器**对话消息发送到本地 LLM 代理 (8767)
+- **本地代理**携带 API Key 转发到服务器 vLLM (20140)，API Key 不暴露给浏览器
+
+## 公司服务器端口说明
+
+| 端口 | 服务 | 说明 |
+|------|------|------|
+| 20140 | Qwen vLLM 模型服务 | OpenAI 兼容接口 `/v1/chat/completions`，由本地 llm_proxy.py 调用 |
+| 20141 | BGE-M3 Embedding 服务 | 由记忆后端内部使用，前端不直接访问 |
+| 20142 | DesayMem 记忆后端 | 记忆读写 API，由浏览器直接访问 |
+| 20143 | PostgreSQL | 仅供服务器内部使用，外部不可访问 |
+| 8767  | Windows 本地 LLM 代理 | llm_proxy.py，隐藏 API Key |
+| 8080  | Windows 本地前端静态页面 | Python http.server 托管 index.html |
+
+> **20140 vs 20142**：20140 是 Qwen 大模型服务（生成对话回复），20142 是记忆后端（存储/检索记忆）。前端不直接访问 20140，而是通过本地 8767 代理间接调用。
+
 ## 快速启动
 
-1. 编辑 `.env`，填入你的 DashScope API Key
+1. 编辑 `.env`，填入与服务器 vLLM 一致的 API Key
 2. 双击 `start.bat`
-3. 浏览器自动打开，点火启动即可
+3. 浏览器自动打开 http://127.0.0.1:8080，点火启动即可
 
 ## 文件说明
 
@@ -14,42 +40,158 @@
 cockpit-frontend/
   index.html       前端页面（三栏布局：用户卡片 / 对话区 / 记忆库）
   llm_proxy.py     本地 LLM 代理（隐藏 API Key，Mem0 OSS proxy 模式）
-  .env             DashScope 密钥配置
+  .env             API Key 与模型配置（不提交 Git）
+  .env.example     配置模板
   start.bat        一键启动脚本
   requirements.txt Python 依赖清单
 ```
 
-## 架构
+## 本地安装依赖
 
-```
-前端 index.html
-  ├─ ① 后端 /v1/memories/search   → 检索记忆
-  ├─ ② 本地代理 /chat              → LLM 生成回复
-  └─ ③ 后端 /v1/memories          → 存储新记忆
+```bash
+pip install -r requirements.txt
 ```
 
-后端（DesayMem_mem0）只负责记忆存取，不参与对话逻辑。
-LLM API Key 只存在本地 `.env`，不暴露给前端浏览器。
+依赖：fastapi、uvicorn、httpx、pydantic
 
-## 配置
+## `.env` 配置方法
 
-编辑 `.env`：
+从模板复制并编辑：
+
+```bash
+copy .env.example .env
+```
+
+配置内容：
 
 ```
-LLM_API_KEY=sk-你的密钥
-LLM_MODEL=qwen-plus
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_API_KEY=请填写与服务器vLLM一致的API_Key
+LLM_MODEL=memory-llm
+LLM_BASE_URL=http://10.133.72.161:20140/v1
 PROXY_PORT=8767
 ```
+
+- `LLM_API_KEY`：必须与服务器 vLLM 配置的 API Key 一致
+- `LLM_MODEL`：服务器上的模型名称，默认 `memory-llm`
+- `LLM_BASE_URL`：服务器 vLLM 地址
+- `PROXY_PORT`：本地代理监听端口
+
+> `.env` 已被 `.gitignore` 忽略，不会提交到 Git。
+
+## `start.bat` 启动方法
+
+双击 `start.bat`，脚本会：
+
+1. 检查 Python 是否安装
+2. 检查 `.env`，不存在则从 `.env.example` 复制
+3. 检查 API Key 是否仍为占位符
+4. 安装缺失的 Python 依赖
+5. 启动本地 LLM 代理 (端口 8767)
+6. 启动本地静态文件服务器 (端口 8080)
+7. 打开浏览器 http://127.0.0.1:8080
+
+启动完成后显示：
+
+```
+Frontend:       http://127.0.0.1:8080
+LLM Proxy:      http://127.0.0.1:8767
+Memory Backend: http://10.133.72.161:20142
+LLM Server:     http://10.133.72.161:20140/v1
+```
+
+如果端口 8767 或 8080 已被占用，脚本会跳过对应服务的启动。
 
 ## 手动启动
 
 ```bash
 pip install -r requirements.txt
-python llm_proxy.py          # 终端 1：启动 LLM 代理
-# 浏览器打开 index.html
+python llm_proxy.py                          # 终端 1：启动 LLM 代理
+python -m http.server 8080 --bind 127.0.0.1  # 终端 2：启动静态服务器
+# 浏览器打开 http://127.0.0.1:8080
 ```
 
-## 后端地址
+## PowerShell 连通性测试
 
-默认连接 `http://47.115.228.135/memory`，可在登录页修改。
+### 健康检查 — 记忆后端
+
+```powershell
+Invoke-RestMethod http://10.133.72.161:20142/health
+```
+
+### 健康检查 — 本地 LLM 代理
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8767/health
+```
+
+### 连通性测试 — vLLM 模型服务
+
+```powershell
+Invoke-WebRequest http://10.133.72.161:20140/v1/models -Headers @{Authorization="Bearer YOUR_API_KEY"}
+```
+
+### 记忆写入验证
+
+```powershell
+$body = @{
+    tenant_id = "oem_chery"
+    user_id   = "user_test"
+    vehicle_id = "vehicle_001"
+    occupant_id = "driver"
+    session_id = "session_test"
+    scene = "driving"
+    messages = @(
+        @{ role = "user"; content = "我开车时喜欢把空调调到22度" }
+    )
+    infer = $true
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Method Post -Uri http://10.133.72.161:20142/v1/memories -ContentType "application/json" -Body $body
+```
+
+### 记忆检索验证
+
+```powershell
+$body = @{
+    tenant_id = "oem_chery"
+    user_id   = "user_test"
+    query     = "空调温度"
+    top_k     = 5
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri http://10.133.72.161:20142/v1/memories/search -ContentType "application/json" -Body $body
+```
+
+## CORS 排查
+
+前端通过 `http://127.0.0.1:8080` 启动，避免 `file://` 页面的 `Origin null` 问题。
+
+服务器记忆后端 (20142) 需要允许以下来源的跨域请求：
+
+- `http://127.0.0.1:8080`
+- `http://localhost:8080`
+
+如果浏览器控制台出现 CORS 错误，检查服务器端 20142 的 CORS 配置是否包含上述来源。
+
+本地 LLM 代理 (8767) 已配置 `allow_origins=["*"]`，不存在 CORS 问题。
+
+## API Key 不一致的排查
+
+如果 LLM 代理返回 HTTP 401/403 错误，说明 `.env` 中的 `LLM_API_KEY` 与服务器 vLLM 配置的 Key 不一致。
+
+排查步骤：
+
+1. 检查 `.env` 中 `LLM_API_KEY` 是否正确
+2. 访问 `http://127.0.0.1:8767/health` 查看代理状态和 Key 掩码
+3. 用 curl/PowerShell 直接测试服务器 vLLM：
+
+```powershell
+Invoke-WebRequest http://10.133.72.161:20140/v1/models -Headers @{Authorization="Bearer YOUR_API_KEY"}
+```
+
+## 默认服务地址
+
+| 配置项 | 默认值 | 可修改 |
+|--------|--------|--------|
+| 后端记忆服务地址 | http://10.133.72.161:20142 | 登录页输入框 |
+| LLM 代理地址 | http://127.0.0.1:8767 | 登录页输入框 |
