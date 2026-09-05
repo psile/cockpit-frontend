@@ -9,6 +9,7 @@ Config comes from .env in the same directory — no manual env vars needed.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -31,23 +32,64 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 
+# ── Qwen3 thinking tag constants ──
+# Built from chr codes to avoid XML parsing issues in tooling
+_THINK_OPEN = "<" + "think" + ">"
+_THINK_CLOSE = "</" + "think" + ">"
+_THINK_OPEN_PATTERN = re.compile(_THINK_OPEN, re.IGNORECASE)
+_THINK_FULL_PATTERN = re.compile(_THINK_OPEN + r".*?" + _THINK_CLOSE, re.DOTALL | re.IGNORECASE)
 
-# ── Mem0 OSS MEMORY_ANSWER_PROMPT (adapted for cockpit) ────────────────────
+
+# ── Cockpit answer prompt (concise, no thinking output) ───────────────────
 
 COCKPIT_ANSWER_PROMPT = """\
-你是一个车载智能语音助手。根据用户提供的历史记忆和当前对话，生成自然、简洁的回复。
-
-规则：
-- 从历史记忆中提取与当前问题相关的信息
-- 如果记忆中有相关偏好，自然地在回复中体现（如"您之前说喜欢..."），但不要生硬
-- 如果没有相关记忆，正常回答用户问题，不要说"未找到记忆"
-- 回复控制在 1-2 句话，口语化，适合语音播报
+你是一个简洁、自然的车载智能语音助手。
+请结合相关历史记忆和用户当前问题，直接给出最终回答。
+必须遵守：
+- 只输出最终回答
+- 禁止输出分析、推理、思考过程、回答计划或规则说明
+- 回答控制在1至2句话
+- 一般不超过50个汉字
+- 用户只是打招呼时，只需简短回应
+- 不复述用户问题
+- 不解释你如何检索或使用记忆
+- 不要输出"首先""接下来""按照规则""我需要回应"等分析性内容
+- 有相关偏好时自然体现，不要刻意强调"根据历史记忆"
+- 没有相关记忆时正常回答，不要说"未找到记忆"
+- 使用自然、简短、适合车载语音播报的中文
 """
 
 # ── Defaults (point to company server vLLM) ──
 DEFAULT_LLM_MODEL = "memory-llm"
 DEFAULT_LLM_BASE_URL = "http://10.133.72.161:20140/v1"
 DEFAULT_PROXY_PORT = "8767"
+DEFAULT_ENABLE_THINKING = False
+DEFAULT_MAX_TOKENS = 128
+DEFAULT_TEMPERATURE = 0.3
+DEFAULT_TOP_P = 0.8
+
+
+def _get_bool(key: str, default: bool) -> bool:
+    val = os.getenv(key, "").strip().lower()
+    if val in ("true", "1", "yes"):
+        return True
+    if val in ("false", "0", "no"):
+        return False
+    return default
+
+
+def _get_int(key: str, default: int) -> int:
+    try:
+        return int(os.getenv(key, str(default)))
+    except ValueError:
+        return default
+
+
+def _get_float(key: str, default: float) -> float:
+    try:
+        return float(os.getenv(key, str(default)))
+    except ValueError:
+        return default
 
 
 class ChatProxyRequest(BaseModel):
@@ -72,11 +114,29 @@ def _mask_key(key: str) -> str:
     return key[:4] + "..." + key[-4:]
 
 
+def _strip_thinking(reply: str) -> str:
+    """Remove Qwen3 thinking blocks if they leak through.
+
+    Handles both closed and unclosed thinking tags.
+    """
+    # Remove closed thinking blocks
+    reply = _THINK_FULL_PATTERN.sub("", reply).strip()
+    # Handle unclosed tag — remove from opening tag to end
+    if _THINK_OPEN_PATTERN.search(reply):
+        idx = _THINK_OPEN_PATTERN.search(reply).start()
+        reply = reply[:idx].strip()
+    return reply
+
+
 @app.post("/chat")
 async def chat(req: ChatProxyRequest) -> dict:
     llm_api_key = os.getenv("LLM_API_KEY", "")
     llm_model = os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL)
     llm_base_url = os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL)
+    enable_thinking = _get_bool("LLM_ENABLE_THINKING", DEFAULT_ENABLE_THINKING)
+    max_tokens = _get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS)
+    temperature = _get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE)
+    top_p = _get_float("LLM_TOP_P", DEFAULT_TOP_P)
 
     # ── Error: API Key not configured ──
     if not llm_api_key:
@@ -105,7 +165,21 @@ async def chat(req: ChatProxyRequest) -> dict:
         prepared.append({"role": "user", "content": f"- 相关历史记忆:\n{memories_text}"})
 
     # Step 3: call LLM (OpenAI-compatible endpoint on company server)
+    # NOTE: chat_template_kwargs.enable_thinking is for Qwen3-32B.
+    # If switching to Qwen3.8 or other models, verify thinking control compatibility.
     url = f"{llm_base_url}/chat/completions"
+    request_body = {
+        "model": llm_model,
+        "messages": prepared,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        # Qwen3-32B: disable thinking mode via chat_template_kwargs
+        "chat_template_kwargs": {
+            "enable_thinking": enable_thinking,
+        },
+    }
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -114,27 +188,22 @@ async def chat(req: ChatProxyRequest) -> dict:
                     "Authorization": f"Bearer {llm_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": llm_model,
-                    "messages": prepared,
-                    "temperature": 0.7,
-                    "max_tokens": 500,
-                    "top_p": 0.8,
-                },
+                json=request_body,
             )
     except httpx.ConnectTimeout:
         return {"reply": "(连接超时：无法连接服务器模型服务，请检查网络或服务器状态)", "model": llm_model, "error": "connect_timeout"}
-    except httpx.ConnectError as e:
+    except httpx.ConnectError:
         return {"reply": "(连接被拒绝：服务器模型服务可能未启动，请检查 10.133.72.161:20140)", "model": llm_model, "error": "connect_refused"}
     except httpx.RequestError as e:
         return {"reply": f"(网络请求异常: {e})", "model": llm_model, "error": "network_error"}
 
     # ── Error: HTTP non-2xx ──
     if not resp.is_success:
-        # API Key invalid → 401/403; server error → 5xx
         hint = ""
         if resp.status_code in (401, 403):
             hint = "（API Key 可能不正确或与服务器 vLLM 不一致，请检查 .env 中 LLM_API_KEY）"
+        elif resp.status_code == 400:
+            hint = "（请求参数被拒绝，请检查 chat_template_kwargs.enable_thinking 是否被服务器支持）"
         elif resp.status_code >= 500:
             hint = "（服务器模型服务内部错误，请检查 vLLM 状态）"
         try:
@@ -159,11 +228,18 @@ async def chat(req: ChatProxyRequest) -> dict:
         return {"reply": "(服务器响应缺少 choices，模型可能未正常生成)", "model": llm_model, "error": "missing_choices"}
 
     try:
-        reply = choices[0]["message"]["content"]
+        reply = choices[0]["message"].get("content") or ""
     except (KeyError, TypeError, IndexError):
         return {"reply": "(服务器响应格式异常，无法提取回复内容)", "model": llm_model, "error": "malformed_response"}
 
-    return {"reply": reply, "model": llm_model}
+    # ── Strip thinking tags (fallback if enable_thinking not honored) ──
+    reply = _strip_thinking(reply)
+
+    # ── Error: empty reply after cleanup ──
+    if not reply or not reply.strip():
+        return {"reply": "模型未返回有效回答", "model": llm_model, "error": "empty_reply"}
+
+    return {"reply": reply.strip(), "model": llm_model}
 
 
 @app.get("/health")
@@ -174,6 +250,8 @@ async def health() -> dict:
         "model": os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL),
         "base_url": os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL),
         "api_key": _mask_key(api_key),
+        "enable_thinking": _get_bool("LLM_ENABLE_THINKING", DEFAULT_ENABLE_THINKING),
+        "max_tokens": _get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
     }
 
 
@@ -189,9 +267,12 @@ def main() -> None:
 
     api_key = os.getenv("LLM_API_KEY", "")
     print(f"LLM Proxy starting on http://{args.host}:{args.port}")
-    print(f"  Model:   {os.getenv('LLM_MODEL', DEFAULT_LLM_MODEL)}")
-    print(f"  Base URL: {os.getenv('LLM_BASE_URL', DEFAULT_LLM_BASE_URL)}")
-    print(f"  API Key: {'configured (' + _mask_key(api_key) + ')' if api_key else 'NOT SET — edit .env'}")
+    print(f"  Model:           {os.getenv('LLM_MODEL', DEFAULT_LLM_MODEL)}")
+    print(f"  Base URL:        {os.getenv('LLM_BASE_URL', DEFAULT_LLM_BASE_URL)}")
+    print(f"  Enable thinking: {_get_bool('LLM_ENABLE_THINKING', DEFAULT_ENABLE_THINKING)}")
+    print(f"  Max tokens:      {_get_int('LLM_MAX_TOKENS', DEFAULT_MAX_TOKENS)}")
+    print(f"  Temperature:     {_get_float('LLM_TEMPERATURE', DEFAULT_TEMPERATURE)}")
+    print(f"  API Key:         {'configured (' + _mask_key(api_key) + ')' if api_key else 'NOT SET — edit .env'}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 

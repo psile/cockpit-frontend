@@ -789,8 +789,13 @@ function addChatMsg(role, text, extraHtml) {
   box.scrollTop = box.scrollHeight;
 }
 
-function escapeHtml(s) {
-  return s.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
+    .replace(/'/g, '&#039;');
 }
 
 function quickSend(text) {
@@ -855,6 +860,7 @@ async function sendMessage() {
     // Step 2: 调本地 LLM 代理生成回复
     showLoading('车机思考中（LLM 生成回复）...');
     let reply = '';
+    let generationSucceeded = false;
     try {
       const proxyResp = await fetch(state.llmProxyUrl + '/chat', {
         method: 'POST',
@@ -866,18 +872,33 @@ async function sendMessage() {
       });
       if (!proxyResp.ok) throw new Error('HTTP ' + proxyResp.status);
       const proxyData = await proxyResp.json();
-      reply = proxyData.reply || '...';
+      if (proxyData.error) {
+        throw new Error(proxyData.reply || proxyData.error);
+      }
+      reply = (proxyData.reply || '').trim();
+      if (!reply) {
+        throw new Error('模型未返回有效回答');
+      }
+      generationSucceeded = true;
     } catch (e) {
-      reply = '（LLM 代理未启动，请运行 start.bat）';
-      extra += '<div class="mem-extracted"><div class="label">⚠ LLM 代理连接失败</div><div class="item">' + escapeHtml(e.message) + '</div></div>';
+      reply = '车机助手暂时无法回答，请稍后重试。';
+      extra += '<div class="mem-extracted"><div class="label">⚠ LLM 调用失败</div><div class="item">' + escapeHtml(e.message) + '</div></div>';
+      console.warn('LLM proxy error:', e.message);
+    }
+
+    // 长文本兜底警告（不截断，仅记录）
+    if (reply.length > 300) {
+      console.warn('回复超过300字符，长度控制可能未生效，当前长度:', reply.length);
     }
 
     // 立即显示回复（不等存储，用户零等待）
     hideLoading();
     addChatMsg('car', reply, extra);
 
-    // Step 3: 异步存储记忆（后台执行，不阻塞用户）
-    storeMemoryAsync(text, reply);
+    // Step 3: 仅在 LLM 成功时异步存储记忆
+    if (generationSucceeded) {
+      storeMemoryAsync(text, reply);
+    }
 
   } catch (e) {
     addChatMsg('car', '网络错误: ' + e.message);

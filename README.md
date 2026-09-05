@@ -69,14 +69,31 @@ LLM_API_KEY=请填写与服务器vLLM一致的API_Key
 LLM_MODEL=memory-llm
 LLM_BASE_URL=http://10.133.72.161:20140/v1
 PROXY_PORT=8767
+LLM_ENABLE_THINKING=false
+LLM_MAX_TOKENS=128
+LLM_TEMPERATURE=0.3
+LLM_TOP_P=0.8
 ```
 
 - `LLM_API_KEY`：必须与服务器 vLLM 配置的 API Key 一致
 - `LLM_MODEL`：服务器上的模型名称，默认 `memory-llm`
 - `LLM_BASE_URL`：服务器 vLLM 地址
 - `PROXY_PORT`：本地代理监听端口
+- `LLM_ENABLE_THINKING`：关闭 Qwen3 思考模式，避免输出分析过程
+- `LLM_MAX_TOKENS`：车机对话回答最大 token 数（128）
+- `LLM_TEMPERATURE`：回答温度（0.3，更稳定）
+- `LLM_TOP_P`：采样参数（0.8）
 
 > `.env` 已被 `.gitignore` 忽略，不会提交到 Git。
+
+### 车机回答 vs 记忆后端 token 限制
+
+| 场景 | 服务 | token 限制 | 说明 |
+|------|------|-----------|------|
+| 前端车机回答 | 本地 llm_proxy.py → vLLM (20140) | 128 | 车机对话回复，简短口语化 |
+| DesayMem 记忆提取 | 服务器记忆后端 (20142) → vLLM (20140) | 2000 | 记忆提取、画像、总结，需要更大上下文 |
+
+前端车机回答的 `LLM_MAX_TOKENS=128` 不影响记忆后端的提取、画像和总结能力。记忆后端有自己的 `LLM_MAX_TOKENS=2000` 配置。
 
 ## `start.bat` 启动方法
 
@@ -188,6 +205,25 @@ Invoke-RestMethod -Method Post -Uri http://10.133.72.161:20142/v1/memories/searc
 ```powershell
 Invoke-WebRequest http://10.133.72.161:20140/v1/models -Headers @{Authorization="Bearer YOUR_API_KEY"}
 ```
+
+## 思考过程泄露排错
+
+如果界面输出模型思考过程（如"首先检查历史记忆…接下来按照规则…"）：
+
+1. 检查 `.env` 中 `LLM_ENABLE_THINKING=false`
+2. 确认重启了本地 8767 代理（见下方重启命令）
+3. 确认旧的代理进程已经停止
+4. 检查 vLLM 是否接受 `chat_template_kwargs.enable_thinking`（如果返回 HTTP 400，说明服务器不支持该参数）
+
+## Windows 重启代理
+
+```cmd
+netstat -ano | findstr :8767
+taskkill /PID <上面查到的PID> /F
+start.bat
+```
+
+或者直接关闭"LLM Proxy"窗口后重新运行 `start.bat`。
 
 ## 默认服务地址
 
