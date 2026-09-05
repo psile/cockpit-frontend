@@ -460,6 +460,76 @@ body {
 .iso-panel .iso-row .val { color: var(--green); }
 .iso-panel .iso-row .val.fail { color: var(--red); }
 
+/* ── 开发者模式面板 ── */
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.dev-toggle input { cursor: pointer; }
+
+.dev-panel {
+  background: rgba(22, 27, 34, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  overflow: hidden;
+}
+.dev-panel.dev-hidden { display: none; }
+.dev-panel-header {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dev-panel-header:hover { color: var(--text); }
+.dev-panel-header .tag {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+.dev-panel-header .tag.sim {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--yellow);
+}
+.dev-panel-header .tag.prod {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--green);
+}
+.dev-panel-body {
+  display: none;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.dev-panel.expanded .dev-panel-body { display: block; }
+.dev-panel-body .row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+.dev-panel-body .row .key { color: var(--text-dim); }
+.dev-panel-body .row .val { color: var(--text); text-align: right; }
+.dev-panel-body .section-label {
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 6px;
+  margin-bottom: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.dev-panel-body .warn-text { color: var(--yellow); font-size: 10px; margin-top: 4px; }
+
 /* ── Toast ── */
 .toast {
   position: fixed;
@@ -563,6 +633,10 @@ body {
     <div class="status-dot idle" id="statusDot"></div>
     <span id="statusText">未连接</span>
   </div>
+  <label class="dev-toggle">
+    <input type="checkbox" id="devModeToggle" checked>
+    开发者模式
+  </label>
 </div>
 
 <!-- 主体 -->
@@ -656,6 +730,16 @@ const DEFAULT_CONFIG = {
   document.getElementById('apiUrl').value = DEFAULT_CONFIG.memoryBackendUrl;
   document.getElementById('llmProxyUrlInput').value = DEFAULT_CONFIG.llmProxyUrl;
 })();
+
+// ── 开发者模式 ──
+let devMode = localStorage.getItem('cockpit_dev_mode');
+if (devMode === null) { devMode = 'true'; } // 默认开启
+const devToggle = document.getElementById('devModeToggle');
+devToggle.checked = devMode === 'true';
+devToggle.addEventListener('change', function() {
+  devMode = this.checked ? 'true' : 'false';
+  localStorage.setItem('cockpit_dev_mode', devMode);
+});
 
 // ── 全局状态 ──
 let state = {
@@ -790,12 +874,9 @@ function addChatMsg(role, text, extraHtml) {
 }
 
 function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/'/g, '&#039;');
+  const div = document.createElement('div');
+  div.textContent = String(value ?? '');
+  return div.innerHTML;
 }
 
 function quickSend(text) {
@@ -825,12 +906,17 @@ async function sendMessage() {
   addChatMsg('user', text);
   input.value = '';
   document.getElementById('sendBtn').disabled = true;
-  showLoading('检索记忆中...');
+
   let extra = '';
   let memoriesUsed = [];
+  let memoryDetails = [];
+  let t_mem_start = 0, t_mem_end = 0, t_llm_start = 0, t_llm_end = 0;
+  let memStoreStatus = '未执行';
 
   try {
     // Step 1: 检索记忆（后端 /v1/memories/search）
+    showLoading('检索记忆中...');
+    t_mem_start = performance.now();
     try {
       const searchResp = await fetch(state.apiUrl + '/v1/memories/search', {
         method: 'POST',
@@ -844,60 +930,97 @@ async function sendMessage() {
       });
       if (searchResp.ok) {
         const searchData = await searchResp.json();
-        memoriesUsed = (searchData.memories || []).map(m => m.content);
-        if (memoriesUsed.length > 0) {
-          extra += '<div class="recall-info"><div class="label">参考记忆 (' + memoriesUsed.length + ' 条)</div>';
-          memoriesUsed.forEach(m => {
-            extra += '<div class="item">• ' + escapeHtml(m.substring(0, 80)) + '</div>';
-          });
-          extra += '</div>';
-        }
+        memoryDetails = (searchData.memories || []).map(m => ({
+          content: m.content,
+          score: m.score,
+          memory_type: m.memory_type
+        }));
+        memoriesUsed = memoryDetails.map(m => m.content);
       }
     } catch (e) {
       // 记忆检索失败不阻断对话
     }
+    t_mem_end = performance.now();
 
     // Step 2: 调本地 LLM 代理生成回复
-    showLoading('车机思考中（LLM 生成回复）...');
+    showLoading('车机决策中...');
     let reply = '';
+    let decision = null;
+    let usage = null;
+    let proxyLatency = 0;
     let generationSucceeded = false;
+    let errorDetail = '';
+
+    t_llm_start = performance.now();
     try {
       const proxyResp = await fetch(state.llmProxyUrl + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [{ role: 'user', content: text }],
-          memory_context: memoriesUsed
+          memory_context: memoriesUsed,
+          tool_mode: 'simulation',
+          vehicle_context: {
+            current_location: null,
+            vehicle_id: state.vehicleId,
+            occupant_id: state.occupant
+          },
+          tool_results: []
         })
       });
       if (!proxyResp.ok) throw new Error('HTTP ' + proxyResp.status);
       const proxyData = await proxyResp.json();
       if (proxyData.error) {
-        throw new Error(proxyData.reply || proxyData.error);
+        errorDetail = proxyData.detail || proxyData.error;
+        throw new Error(proxyData.error);
       }
       reply = (proxyData.reply || '').trim();
+      decision = proxyData.decision || null;
+      usage = proxyData.usage || null;
+      proxyLatency = proxyData.latency_ms || 0;
       if (!reply) {
         throw new Error('模型未返回有效回答');
       }
       generationSucceeded = true;
     } catch (e) {
       reply = '车机助手暂时无法回答，请稍后重试。';
-      extra += '<div class="mem-extracted"><div class="label">⚠ LLM 调用失败</div><div class="item">' + escapeHtml(e.message) + '</div></div>';
+      errorDetail = errorDetail || e.message;
       console.warn('LLM proxy error:', e.message);
     }
+    t_llm_end = performance.now();
 
-    // 长文本兜底警告（不截断，仅记录）
+    // 长文本兜底警告
     if (reply.length > 300) {
       console.warn('回复超过300字符，长度控制可能未生效，当前长度:', reply.length);
     }
 
-    // 立即显示回复（不等存储，用户零等待）
+    // 构建开发者面板
     hideLoading();
+    const memLatency = Math.round(t_mem_end - t_mem_start);
+    const llmLatency = proxyLatency || Math.round(t_llm_end - t_llm_start);
+    const totalLatency = Math.round(t_llm_end - t_mem_start);
+
+    if (devMode === 'true') {
+      // 决策面板
+      if (decision) {
+        extra += buildDecisionPanel(decision);
+      }
+      // 调试面板
+      extra += buildDebugPanel(memoryDetails, memLatency, llmLatency, totalLatency, usage, memStoreStatus, errorDetail);
+    } else if (errorDetail) {
+      // 非开发者模式下也显示简短错误
+      extra += '<div class="mem-extracted"><div class="label">⚠ LLM 调用失败</div><div class="item">' + escapeHtml(errorDetail) + '</div></div>';
+    }
+
+    // 立即显示回复
     addChatMsg('car', reply, extra);
 
-    // Step 3: 仅在 LLM 成功时异步存储记忆
+    // Step 3: 仅在 LLM 成功时异步存储记忆（只存 reply）
     if (generationSucceeded) {
+      memStoreStatus = '正在写入...';
       storeMemoryAsync(text, reply);
+    } else {
+      memStoreStatus = '已跳过（模型失败）';
     }
 
   } catch (e) {
@@ -906,6 +1029,99 @@ async function sendMessage() {
     document.getElementById('sendBtn').disabled = false;
     hideLoading();
   }
+}
+
+// ── 构建决策面板 ──
+function buildDecisionPanel(d) {
+  const isSim = d.tool_mode === 'simulation';
+  const tagClass = isSim ? 'sim' : 'prod';
+  const tagText = isSim ? '模拟' : '生产';
+  const warnText = isSim ? '模拟决策，未执行真实车机操作' : '真实车机上下文';
+
+  let entitiesHtml = '';
+  if (d.entities && Object.keys(d.entities).length > 0) {
+    entitiesHtml = Object.entries(d.entities).map(([k, v]) => {
+      return '<div class="row"><span class="key">' + escapeHtml(k) + '</span><span class="val">' + (v === null || v === undefined ? '未提供' : escapeHtml(String(v))) + '</span></div>';
+    }).join('');
+  } else {
+    entitiesHtml = '<div class="row"><span class="key">无实体</span><span class="val">-</span></div>';
+  }
+
+  let prefsHtml = (d.retrieved_preferences || []).length > 0
+    ? d.retrieved_preferences.map(p => '<div class="row"><span class="key">•</span><span class="val">' + escapeHtml(p) + '</span></div>').join('')
+    : '<div class="row"><span class="key">无</span><span class="val">-</span></div>';
+
+  let missingHtml = (d.missing_information || []).length > 0
+    ? d.missing_information.map(m => '<div class="row"><span class="key">•</span><span class="val">' + escapeHtml(m) + '</span></div>').join('')
+    : '<div class="row"><span class="key">无缺失</span><span class="val">-</span></div>';
+
+  let toolsHtml = (d.next_tools || []).length > 0
+    ? d.next_tools.map(t => '<div class="row"><span class="key">•</span><span class="val">' + escapeHtml(t) + '</span></div>').join('')
+    : '<div class="row"><span class="key">无</span><span class="val">-</span></div>';
+
+  return '<div class="dev-panel" onclick="this.classList.toggle(\'expanded\')">' +
+    '<div class="dev-panel-header">' +
+      '<span>车机决策</span><span class="tag ' + tagClass + '">' + tagText + '</span>' +
+      '<span>｜' + escapeHtml(d.intent || 'other') + '</span>' +
+      '<span>｜缺失' + (d.missing_information || []).length + '项</span>' +
+      '<span>｜置信度' + (d.confidence || 0).toFixed(2) + '</span>' +
+    '</div>' +
+    '<div class="dev-panel-body">' +
+      '<div class="warn-text">' + warnText + '</div>' +
+      '<div class="section-label">意图</div><div class="row"><span class="key">intent</span><span class="val">' + escapeHtml(d.intent || '') + '</span></div>' +
+      '<div class="section-label">已识别实体</div>' + entitiesHtml +
+      '<div class="section-label">使用的用户偏好</div>' + prefsHtml +
+      '<div class="section-label">缺失信息</div>' + missingHtml +
+      '<div class="section-label">当前决策</div><div class="row"><span class="key">action</span><span class="val">' + escapeHtml(d.action || '') + '</span></div>' +
+      '<div class="section-label">下一步工具</div>' + toolsHtml +
+      '<div class="section-label">决策说明</div><div class="row"><span class="key">explanation</span><span class="val">' + escapeHtml(d.explanation || '') + '</span></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ── 构建调试面板 ──
+function buildDebugPanel(memDetails, memLatency, llmLatency, totalLatency, usage, storeStatus, errorDetail) {
+  let memHtml = '';
+  if (memDetails && memDetails.length > 0) {
+    memDetails.forEach(m => {
+      const score = m.score != null ? m.score.toFixed(3) : '-';
+      const mtype = m.memory_type || 'unknown';
+      memHtml += '<div class="row"><span class="key">' + escapeHtml(mtype) + '</span><span class="val">' + escapeHtml((m.content || '').substring(0, 60)) + ' (' + score + ')</span></div>';
+    });
+  } else {
+    memHtml = '<div class="row"><span class="key">无召回</span><span class="val">-</span></div>';
+  }
+
+  let usageHtml = '';
+  if (usage) {
+    usageHtml = '<div class="row"><span class="key">token用量</span><span class="val">' + (usage.prompt_tokens || 0) + ' → ' + (usage.completion_tokens || 0) + ' (总' + (usage.total_tokens || 0) + ')</span></div>';
+  } else {
+    usageHtml = '<div class="row"><span class="key">token用量</span><span class="val">未提供</span></div>';
+  }
+
+  let errHtml = '';
+  if (errorDetail) {
+    errHtml = '<div class="section-label" style="color:var(--red)">错误信息</div><div class="row"><span class="key">detail</span><span class="val">' + escapeHtml(errorDetail) + '</span></div>';
+  }
+
+  const recallCount = memDetails ? memDetails.length : 0;
+
+  return '<div class="dev-panel" onclick="this.classList.toggle(\'expanded\')">' +
+    '<div class="dev-panel-header">' +
+      '<span>记忆调试</span><span>｜召回' + recallCount + '条</span>' +
+      '<span>｜总耗时' + totalLatency + 'ms</span>' +
+    '</div>' +
+    '<div class="dev-panel-body">' +
+      '<div class="section-label">召回记忆 (' + recallCount + '条)</div>' + memHtml +
+      '<div class="section-label">性能</div>' +
+      '<div class="row"><span class="key">检索耗时</span><span class="val">' + memLatency + 'ms</span></div>' +
+      '<div class="row"><span class="key">模型耗时</span><span class="val">' + llmLatency + 'ms</span></div>' +
+      '<div class="row"><span class="key">总耗时</span><span class="val">' + totalLatency + 'ms</span></div>' +
+      usageHtml +
+      '<div class="row"><span class="key">记忆写入</span><span class="val">' + escapeHtml(storeStatus) + '</span></div>' +
+      errHtml +
+    '</div>' +
+  '</div>';
 }
 
 // 异步存储记忆 — 不阻塞对话体验

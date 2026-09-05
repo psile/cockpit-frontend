@@ -70,9 +70,10 @@ LLM_MODEL=memory-llm
 LLM_BASE_URL=http://10.133.72.161:20140/v1
 PROXY_PORT=8767
 LLM_ENABLE_THINKING=false
-LLM_MAX_TOKENS=128
-LLM_TEMPERATURE=0.3
+LLM_MAX_TOKENS=256
+LLM_TEMPERATURE=0.2
 LLM_TOP_P=0.8
+COCKPIT_TOOL_MODE=simulation
 ```
 
 - `LLM_API_KEY`：必须与服务器 vLLM 配置的 API Key 一致
@@ -80,9 +81,10 @@ LLM_TOP_P=0.8
 - `LLM_BASE_URL`：服务器 vLLM 地址
 - `PROXY_PORT`：本地代理监听端口
 - `LLM_ENABLE_THINKING`：关闭 Qwen3 思考模式，避免输出分析过程
-- `LLM_MAX_TOKENS`：车机对话回答最大 token 数（128）
-- `LLM_TEMPERATURE`：回答温度（0.3，更稳定）
+- `LLM_MAX_TOKENS`：车机对话回答最大 token 数（256，含结构化决策+简短回答）
+- `LLM_TEMPERATURE`：回答温度（0.2，更稳定）
 - `LLM_TOP_P`：采样参数（0.8）
+- `COCKPIT_TOOL_MODE`：车机工具模式（simulation/production）
 
 > `.env` 已被 `.gitignore` 忽略，不会提交到 Git。
 
@@ -90,10 +92,10 @@ LLM_TOP_P=0.8
 
 | 场景 | 服务 | token 限制 | 说明 |
 |------|------|-----------|------|
-| 前端车机回答 | 本地 llm_proxy.py → vLLM (20140) | 128 | 车机对话回复，简短口语化 |
+| 前端车机回答 | 本地 llm_proxy.py → vLLM (20140) | 256 | 结构化决策摘要 + 简短用户回答 |
 | DesayMem 记忆提取 | 服务器记忆后端 (20142) → vLLM (20140) | 2000 | 记忆提取、画像、总结，需要更大上下文 |
 
-前端车机回答的 `LLM_MAX_TOKENS=128` 不影响记忆后端的提取、画像和总结能力。记忆后端有自己的 `LLM_MAX_TOKENS=2000` 配置。
+前端车机回答的 `LLM_MAX_TOKENS=256` 不影响记忆后端的提取、画像和总结能力。记忆后端有自己的 `LLM_MAX_TOKENS=2000` 配置。
 
 ## `start.bat` 启动方法
 
@@ -224,6 +226,78 @@ start.bat
 ```
 
 或者直接关闭"LLM Proxy"窗口后重新运行 `start.bat`。
+
+## 结构化车机决策与开发者模式
+
+### 为什么不直接展示原始思考链
+
+模型原始思考链（`think` 内容）是模型内部分析过程，包含大量试错、规则引用和自言自语，不适合展示给开发者或用户。本项目关闭 Qwen3 思考模式（`enable_thinking=false`），改为让模型生成结构化决策摘要——经过整理、可验证的 JSON 格式信息。
+
+### 结构化车机决策摘要是什么
+
+每次车机回答包含三层：
+
+1. **车机决策过程**（开发者可见）：意图、实体、缺失信息、记忆依据、当前决策、下一步工具、工具模式、决策说明、置信度
+2. **记忆与性能调试**（开发者可见）：召回记忆数量及 score、检索耗时、模型耗时、总耗时、token 用量、记忆写入状态
+3. **用户最终回答**（所有模式可见）：1-2 句简短中文，适合语音播报
+
+开发者模式下两个调试卡片默认折叠，点击展开。关闭开发者模式后只显示最终回答。
+
+### simulation 和 production 的区别
+
+| 模式 | 说明 |
+|------|------|
+| simulation | 展示模拟的车机工具计划，标记"模拟决策，未执行真实车机操作"。不能声称操作已完成 |
+| production | 只展示真实获得的状态和真实执行的工具结果。只有收到真实工具成功结果后才能声称操作完成 |
+
+当前版本只模拟工具规划，没有真实执行车辆操作。
+
+### 哪些信息来自真实系统
+
+- 检索记忆内容和 score：来自记忆后端 (20142) 真实返回
+- 模型名称：来自代理真实返回
+- token 用量：来自 vLLM 真实 usage
+- 耗时：由程序真实计算
+- current_location：来自 vehicle_context（当前为 null，未接入定位）
+
+### 哪些信息属于模拟计划
+
+- next_tools：下一步计划工具（如地图搜索、路线规划），尚未执行
+- action：计划动作（如询问位置），不是已执行结果
+- tool_mode=simulation：标记当前为模拟模式
+
+### 如何关闭开发者模式
+
+顶栏右侧"开发者模式"复选框，取消勾选即可。状态保存在 localStorage，刷新后保持。
+
+### 哪些内容会写入记忆
+
+只有有效的用户输入（user 消息）和最终车机回答（assistant reply）会写入记忆。
+
+**不会写入记忆的内容：**
+- decision 决策摘要
+- developerDebug 调试信息
+- retrievedMemories 检索记忆
+- explanation 决策说明
+- 原始 thinking
+- 工具计划
+- 错误信息
+
+模型调用失败时不写入记忆。
+
+### 当前架构与后续接入
+
+当前版本流程：
+```
+用户请求 → 记忆检索 → 结构化模拟决策 → 最终用户回答
+```
+
+后续接入真实工具时的目标流程：
+```
+用户请求 → 记忆检索 → 结构化决策 → 工具调用（定位/地图/导航/空调/音乐）→ 工具结果 → 最终用户回答
+```
+
+接入真实工具时，将 `COCKPIT_TOOL_MODE` 改为 `production`，并在前端 `vehicle_context` 中传入真实定位、车辆状态，在 `tool_results` 中传入真实工具执行结果。
 
 ## 默认服务地址
 
