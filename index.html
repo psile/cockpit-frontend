@@ -564,6 +564,206 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── 记忆观测面板 ── */
+.obs-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.obs-tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 7px 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.obs-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.obs-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.obs-section { margin-bottom: 16px; }
+.obs-section .obs-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.obs-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.obs-stat-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 6px;
+  text-align: center;
+}
+.obs-stat-box .num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.obs-stat-box .lbl {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.obs-stat-box.l2 .num { color: var(--yellow); }
+.obs-stat-box.l3 .num { color: var(--green); }
+.obs-stat-box.del .num { color: var(--red); }
+
+.obs-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.obs-card .obs-card-content {
+  line-height: 1.4;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.obs-card .obs-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.obs-card .obs-tag {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+}
+.obs-tag.active { background: rgba(63,185,80,0.2); color: var(--green); }
+.obs-tag.complete { background: rgba(139,148,158,0.2); color: var(--text-dim); }
+.obs-tag.superseded { background: rgba(210,153,34,0.2); color: var(--yellow); }
+.obs-tag.stab-episode { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+.obs-tag.stab-recurring { background: rgba(74,144,217,0.2); color: var(--accent); }
+.obs-tag.stab-identity { background: rgba(63,185,80,0.2); color: var(--green); }
+.obs-card .obs-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+}
+.obs-card .obs-del-btn:hover { color: var(--red); }
+.obs-card .obs-evidence {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.obs-card .obs-evidence:hover { color: var(--accent); }
+.obs-card .obs-source-l1 {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+}
+
+.obs-event {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  border-left: 3px solid var(--text-dim);
+}
+.obs-event.ADD, .obs-event.COEXIST { border-left-color: var(--green); }
+.obs-event.UPDATE, .obs-event.CONFIRM { border-left-color: var(--accent); }
+.obs-event.COMPLETE { border-left-color: var(--text-dim); }
+.obs-event.SUPERSEDE { border-left-color: var(--yellow); }
+.obs-event.DELETE { border-left-color: var(--red); }
+.obs-event.FORGET { border-left-color: #a371f7; }
+.obs-event .obs-ev-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.obs-event .obs-ev-layer {
+  font-weight: 600;
+  font-size: 10px;
+}
+.obs-event .obs-ev-time { color: var(--text-dim); font-size: 10px; }
+.obs-event .obs-ev-change {
+  color: var(--text);
+  margin: 2px 0;
+}
+.obs-event .obs-ev-reason {
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.obs-event .obs-ev-arrow { color: var(--yellow); font-weight: 600; }
+
+.obs-filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.obs-filters select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  color: var(--text);
+  font-size: 10px;
+}
+.obs-empty {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 30px 0;
+  font-size: 12px;
+}
+.obs-error {
+  text-align: center;
+  color: var(--red);
+  padding: 20px 0;
+  font-size: 12px;
+}
+.obs-retry {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.obs-forget-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px;
+  background: rgba(139,148,158,0.1);
+  border-radius: 6px;
+  text-align: center;
+  margin-top: 8px;
+}
+.obs-dev-hidden { display: none; }
+
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -687,31 +887,21 @@ body {
     </div>
   </div>
 
-  <!-- 右侧记忆 -->
+  <!-- 右侧记忆观测 -->
   <div class="right-panel">
     <div class="right-header">
-      <div class="title">记忆库</div>
-      <button onclick="refreshMemories()">刷新</button>
+      <div class="title">记忆观测</div>
+      <button onclick="refreshObservation()">刷新记忆状态</button>
     </div>
-    <div class="mem-tabs">
-      <button class="active" id="tabAll" onclick="switchTab('all')">全部</button>
-      <button id="tabSemantic" onclick="switchTab('semantic_memory')">语义</button>
-      <button id="tabProcedural" onclick="switchTab('procedural_memory')">过程性</button>
+    <div class="obs-tabs">
+      <button class="active" id="obsTabOverview" onclick="switchObsTab('overview')">总览</button>
+      <button id="obsTabL1" onclick="switchObsTab('l1')">L1事实</button>
+      <button id="obsTabL2" onclick="switchObsTab('l2')">L2情景</button>
+      <button id="obsTabL3" onclick="switchObsTab('l3')">L3画像</button>
+      <button id="obsTabEvents" onclick="switchObsTab('events')">演化记录</button>
     </div>
-    <div class="mem-list" id="memList">
-      <div class="mem-empty">暂无记忆</div>
-    </div>
-    <div class="iso-panel">
-      <div class="iso-title">用户隔离测试</div>
-      <div class="iso-row">
-        <span>当前用户记忆数</span>
-        <span class="val" id="isoMyCount">0</span>
-      </div>
-      <div class="iso-row">
-        <span>其他用户可查</span>
-        <span class="val" id="isoOtherStatus">未测试</span>
-      </div>
-      <button class="switch-btn" style="margin:8px 0 0;width:100%" onclick="runIsolationTest()">运行隔离测试</button>
+    <div class="obs-content" id="obsContent">
+      <div class="obs-empty">登录后加载记忆观测数据</div>
     </div>
   </div>
 </div>
@@ -753,6 +943,11 @@ let state = {
   connected: false,
   memTab: 'all',
   memories: [],
+  obsTab: 'overview',
+  obsLayers: null,
+  obsEvents: null,
+  obsError: null,
+  obsEventFilter: { layer: '', event: '' },
 };
 
 // ── 登录 ──
@@ -811,6 +1006,7 @@ async function doLogin() {
   document.getElementById('loginOverlay').classList.add('hidden');
   updateUserCard();
   await refreshMemories();
+  await refreshObservation();
 
   if (state.memories.length > 0) {
     addChatMsg('car', '欢迎回来！已恢复您的历史记忆 ' + state.memories.length + ' 条。');
@@ -820,9 +1016,12 @@ async function doLogin() {
 function logout() {
   state.connected = false;
   state.memories = [];
+  state.obsLayers = null;
+  state.obsEvents = null;
+  state.obsError = null;
   document.getElementById('loginOverlay').classList.remove('hidden');
   document.getElementById('chatBox').innerHTML = '';
-  document.getElementById('memList').innerHTML = '<div class="mem-empty">暂无记忆</div>';
+  document.getElementById('obsContent').innerHTML = '<div class="obs-empty">登录后加载记忆观测数据</div>';
   document.getElementById('memCount').textContent = '0';
   setStatus('idle', '未连接');
 }
@@ -1148,6 +1347,7 @@ function storeMemoryAsync(userText, assistantReply) {
         showToast('已记住 ' + data.memories.length + ' 条新记忆');
       }
       refreshMemories();
+      refreshObservation();
     })
     .catch(e => console.log('存储记忆失败:', e));
 }
@@ -1197,53 +1397,202 @@ async function doSearch(query) {
   }
 }
 
-// ── 记忆列表 ──
+// ── 记忆列表（保留用于左侧计数） ──
 async function refreshMemories() {
   if (!state.connected) return;
   try {
     let url = state.apiUrl + '/v1/users/' + state.userId + '/memories?tenant_id=' + state.tenant + '&limit=100';
-    if (state.memTab !== 'all') {
-      url += '&memory_type=' + state.memTab;
-    }
     const resp = await fetch(url);
     if (!resp.ok) return;
     const data = await resp.json();
     state.memories = data.memories || [];
-    renderMemList();
     document.getElementById('memCount').textContent = state.memories.length;
-    document.getElementById('isoMyCount').textContent = state.memories.length;
   } catch (e) {}
 }
 
-function renderMemList() {
-  const list = document.getElementById('memList');
-  if (state.memories.length === 0) {
-    list.innerHTML = '<div class="mem-empty">暂无记忆</div>';
-    return;
+// ── 记忆观测面板 ──
+async function refreshObservation() {
+  if (!state.connected) return;
+  state.obsError = null;
+  try {
+    const [layersResp, eventsResp] = await Promise.all([
+      fetch(state.apiUrl + '/v1/users/' + state.userId + '/memory-layers?tenant_id=' + state.tenant + '&include_inactive=true&l1_limit=500&l2_limit=500&l3_limit=500'),
+      fetch(state.apiUrl + '/v1/users/' + state.userId + '/memory-events?tenant_id=' + state.tenant + '&limit=100')
+    ]);
+    if (!layersResp.ok || !eventsResp.ok) {
+      state.obsError = '记忆观测数据加载失败 (HTTP ' + (layersResp.ok ? eventsResp.status : layersResp.status) + ')';
+      renderObsContent(); return;
+    }
+    state.obsLayers = await layersResp.json();
+    state.obsEvents = await eventsResp.json();
+    renderObsContent();
+  } catch (e) {
+    console.warn('Observation load error:', e.message);
+    state.obsError = '记忆观测数据加载失败';
+    renderObsContent();
   }
-  list.innerHTML = state.memories.map(m => {
-    const type = m.memory_type || 'semantic_memory';
-    const typeClass = type === 'procedural_memory' ? 'procedural' : 'semantic';
-    const typeLabel = type === 'procedural_memory' ? '过程性' : '语义';
-    const time = m.created_at ? new Date(m.created_at).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
-    return '<div class="mem-card">' +
-      '<div class="content">' + escapeHtml(m.content) + '</div>' +
-      '<div class="footer">' +
-        '<span class="type-tag ' + typeClass + '">' + typeLabel + '</span>' +
-        '<span>' + time + '</span>' +
-        '<button class="del-btn" onclick="deleteMemory(\'' + m.id + '\')">删除</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
 }
 
-function switchTab(tab) {
-  state.memTab = tab;
-  document.querySelectorAll('.mem-tabs button').forEach(b => b.classList.remove('active'));
-  if (tab === 'all') document.getElementById('tabAll').classList.add('active');
-  else if (tab === 'semantic_memory') document.getElementById('tabSemantic').classList.add('active');
-  else document.getElementById('tabProcedural').classList.add('active');
-  refreshMemories();
+function switchObsTab(tab) {
+  state.obsTab = tab;
+  document.querySelectorAll('.obs-tabs button').forEach(b => b.classList.remove('active'));
+  var tabId = { overview: 'obsTabOverview', l1: 'obsTabL1', l2: 'obsTabL2', l3: 'obsTabL3', events: 'obsTabEvents' }[tab];
+  if (tabId) document.getElementById(tabId).classList.add('active');
+  renderObsContent();
+}
+
+function renderObsContent() {
+  var el = document.getElementById('obsContent');
+  if (state.obsError) {
+    el.innerHTML = '<div class="obs-error">' + escapeHtml(state.obsError) + '<br><button class="obs-retry" onclick="refreshObservation()">重试</button></div>';
+    return;
+  }
+  if (!state.obsLayers) { el.innerHTML = '<div class="obs-empty">加载中...</div>'; return; }
+  if (devMode !== 'true') {
+    el.innerHTML = '<div class="obs-empty">已启用记忆<br><span style="font-size:11px">开启开发者模式查看完整观测面板</span></div>';
+    return;
+  }
+  if (state.obsTab === 'overview') renderOverview(el);
+  else if (state.obsTab === 'l1') renderL1(el);
+  else if (state.obsTab === 'l2') renderL2(el);
+  else if (state.obsTab === 'l3') renderL3(el);
+  else if (state.obsTab === 'events') renderEvents(el);
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(e) { return ''; }
+}
+
+function renderOverview(el) {
+  var s = (state.obsLayers && state.obsLayers.stats) || {};
+  var events = (state.obsEvents && state.obsEvents.events) || [];
+  var today = new Date().toDateString();
+  var todayEvents = events.filter(function(e) { return e.created_at && new Date(e.created_at).toDateString() === today; });
+  var todayAdd = todayEvents.filter(function(e) { return e.event === 'ADD' || e.event === 'COEXIST'; }).length;
+  var todayUpdate = todayEvents.filter(function(e) { return e.event === 'UPDATE' || e.event === 'CONFIRM' || e.event === 'SUPERSEDE'; }).length;
+  var todayDelete = todayEvents.filter(function(e) { return e.event === 'DELETE'; }).length;
+
+  var html = '<div class="obs-section"><div class="obs-label">记忆统计</div><div class="obs-stat-grid">' +
+    '<div class="obs-stat-box"><div class="num">' + (s.l1_count||0) + '</div><div class="lbl">L1 事实</div></div>' +
+    '<div class="obs-stat-box l2"><div class="num">' + (s.l2_count||0) + '</div><div class="lbl">L2 情景</div></div>' +
+    '<div class="obs-stat-box l3"><div class="num">' + (s.l3_count||0) + '</div><div class="lbl">L3 画像</div></div>' +
+    '</div></div>';
+  html += '<div class="obs-section"><div class="obs-label">L2 情景状态</div><div class="obs-stat-grid">' +
+    '<div class="obs-stat-box l2"><div class="num">' + (s.l2_active_count||0) + '</div><div class="lbl">活跃</div></div>' +
+    '<div class="obs-stat-box l2"><div class="num">' + (s.l2_complete_count||0) + '</div><div class="lbl">已结束</div></div>' +
+    '</div></div>';
+  html += '<div class="obs-section"><div class="obs-label">L3 画像状态</div><div class="obs-stat-grid">' +
+    '<div class="obs-stat-box l3"><div class="num">' + (s.l3_active_count||0) + '</div><div class="lbl">有效</div></div>' +
+    '<div class="obs-stat-box l3"><div class="num">' + (s.l3_superseded_count||0) + '</div><div class="lbl">已替代</div></div>' +
+    '</div></div>';
+  html += '<div class="obs-section"><div class="obs-label">今日演化</div><div class="obs-stat-grid">' +
+    '<div class="obs-stat-box"><div class="num">' + todayAdd + '</div><div class="lbl">新增</div></div>' +
+    '<div class="obs-stat-box"><div class="num">' + todayUpdate + '</div><div class="lbl">更新</div></div>' +
+    '<div class="obs-stat-box del"><div class="num">' + todayDelete + '</div><div class="lbl">删除</div></div>' +
+    '</div></div>';
+  html += '<div class="obs-forget-status">自动遗忘：尚未启用</div>';
+  html += '<div class="obs-section" style="margin-top:12px"><div class="obs-label">用户隔离测试</div>' +
+    '<div class="obs-card"><div class="obs-card-footer"><span>当前用户记忆数</span><span class="obs-tag active">' + (s.l1_count||0) + '</span></div>' +
+    '<div class="obs-card-footer"><span>其他用户可查</span><span id="isoOtherStatus" class="obs-tag">未测试</span></div>' +
+    '<button class="switch-btn" style="margin:6px 0 0;width:100%" onclick="runIsolationTest()">运行隔离测试</button></div></div>';
+  el.innerHTML = html;
+}
+
+function renderL1(el) {
+  var items = (state.obsLayers && state.obsLayers.l1) || [];
+  if (!items.length) { el.innerHTML = '<div class="obs-empty">暂无 L1 原子事实</div>'; return; }
+  el.innerHTML = '<div class="obs-section"><div class="obs-label">从对话中抽取的具体事实，是 L2 和 L3 的事实来源。</div></div>' +
+    items.map(function(m) {
+      var meta = m.metadata || {}, metaHtml = '';
+      Object.keys(meta).forEach(function(k) {
+        if (['observed_at','memory_type','occurred_at'].indexOf(k) >= 0) return;
+        metaHtml += '<div style="font-size:10px;color:var(--text-dim)"><span>' + escapeHtml(k) + ': </span><span>' + escapeHtml(String(meta[k])) + '</span></div>';
+      });
+      return '<div class="obs-card"><div class="obs-card-content">' + escapeHtml(m.content) + '</div>' +
+        '<div class="obs-card-footer"><span class="obs-tag active">' + escapeHtml(m.source||'conversation') + '</span>' +
+        '<span>' + escapeHtml(m.scene||'') + (m.occupant_id ? ' | '+escapeHtml(m.occupant_id) : '') + '</span>' +
+        '<span>' + fmtTime(m.updated_at) + '</span>' +
+        '<button class="obs-del-btn" onclick="deleteMemory(\'' + m.id + '\')">删除</button></div>' + metaHtml + '</div>';
+    }).join('');
+}
+
+function renderL2(el) {
+  var items = (state.obsLayers && state.obsLayers.l2) || [];
+  var l1Map = {};
+  ((state.obsLayers && state.obsLayers.l1) || []).forEach(function(m) { l1Map[m.id] = m; });
+  if (!items.length) { el.innerHTML = '<div class="obs-empty">暂无 L2 情景事件</div>'; return; }
+  el.innerHTML = '<div class="obs-section"><div class="obs-label">事件摘要，由 L1 事实归纳形成。</div></div>' +
+    items.map(function(m) {
+      var meta = m.metadata || {};
+      var status = meta.episode_status || 'active';
+      var statusLabel = status === 'active' ? '当前开放事件' : '事件已经结束';
+      var sourceIds = meta.source_memory_ids || [];
+      var sourceHtml = '';
+      if (sourceIds.length > 0) {
+        sourceHtml = '<div class="obs-source-l1"><span style="color:var(--text-dim)">来源 L1 (' + sourceIds.length + '条):</span> ';
+        var found = sourceIds.map(function(id) { return l1Map[id]; }).filter(Boolean);
+        sourceHtml += found.length ? found.map(function(f) { return escapeHtml((f.content||'').substring(0,40)); }).join('；') : '<span style="color:var(--red)">来源事实已不可用</span>';
+        sourceHtml += '</div>';
+      }
+      return '<div class="obs-card"><div class="obs-card-content">' + escapeHtml(m.content) + '</div>' +
+        '<div class="obs-card-footer"><span class="obs-tag ' + status + '">' + statusLabel + '</span>' +
+        '<span>置信度: ' + (meta.confidence != null ? Number(meta.confidence).toFixed(2) : '-') + '</span>' +
+        '<span>' + fmtTime(m.updated_at) + '</span></div>' +
+        (meta.occurred_at ? '<div style="font-size:10px;color:var(--text-dim)">发生: ' + escapeHtml(meta.occurred_at) + (meta.occurred_end ? ' → '+escapeHtml(meta.occurred_end) : '') + '</div>' : '') +
+        sourceHtml + '</div>';
+    }).join('');
+}
+
+function renderL3(el) {
+  var items = (state.obsLayers && state.obsLayers.l3) || [];
+  if (!items.length) { el.innerHTML = '<div class="obs-empty">暂无 L3 用户画像信念</div>'; return; }
+  el.innerHTML = '<div class="obs-section"><div class="obs-label">用户画像信念，由 L1/L2 证据蒸馏形成。</div></div>' +
+    items.map(function(b) {
+      var stabLabel = { episode:'暂时性判断', recurring:'稳定偏好', identity:'身份类事实' }[b.stability] || b.stability;
+      var statusLabel = b.status === 'active' ? '当前有效' : '已被新信念替代';
+      var condStr = b.conditions && Object.keys(b.conditions).length > 0 ? JSON.stringify(b.conditions) : '';
+      var evidenceHtml = '';
+      if ((b.evidence_memory_ids||[]).length) evidenceHtml += '<div class="obs-evidence" onclick="showEvidence(\'' + (b.evidence_memory_ids||[]).join(',') + '\')">证据 L1: ' + (b.evidence_memory_ids||[]).length + ' 条</div>';
+      if ((b.evidence_episode_ids||[]).length) evidenceHtml += '<div class="obs-evidence" onclick="showEvidence(\'' + (b.evidence_episode_ids||[]).join(',') + '\')">证据 L2: ' + (b.evidence_episode_ids||[]).length + ' 条</div>';
+      return '<div class="obs-card"><div class="obs-card-content"><strong>' + escapeHtml(b.attribute) + '</strong>: ' + escapeHtml(b.value) + (condStr ? ' <span style="color:var(--text-dim)">('+escapeHtml(condStr)+')</span>' : '') + '</div>' +
+        '<div class="obs-card-footer"><span class="obs-tag ' + b.status + '">' + statusLabel + '</span>' +
+        '<span class="obs-tag stab-' + b.stability + '">' + stabLabel + '</span>' +
+        '<span>置信度: ' + (b.confidence != null ? Number(b.confidence).toFixed(2) : '-') + '</span>' +
+        '<span>支持: ' + (b.support_count||0) + '</span><span>' + fmtTime(b.updated_at) + '</span></div>' +
+        (b.valid_from ? '<div style="font-size:10px;color:var(--text-dim)">有效: ' + escapeHtml(b.valid_from) + (b.valid_to ? ' → '+escapeHtml(b.valid_to) : ' → 至今') + '</div>' : '') +
+        evidenceHtml + '</div>';
+    }).join('');
+}
+
+function renderEvents(el) {
+  var events = (state.obsEvents && state.obsEvents.events) || [];
+  var f = state.obsEventFilter;
+  var filtered = events.filter(function(e) { return (!f.layer || e.layer === f.layer) && (!f.event || e.event === f.event); });
+  var html = '<div class="obs-filters">' +
+    '<select onchange="state.obsEventFilter.layer=this.value;renderEvents(document.getElementById(\'obsContent\'))"><option value="">全部层级</option><option value="L1">L1</option><option value="L2">L2</option><option value="L3">L3</option></select>' +
+    '<select onchange="state.obsEventFilter.event=this.value;renderEvents(document.getElementById(\'obsContent\'))"><option value="">全部事件</option><option value="ADD">ADD</option><option value="UPDATE">UPDATE</option><option value="CONFIRM">CONFIRM</option><option value="COMPLETE">COMPLETE</option><option value="SUPERSEDE">SUPERSEDE</option><option value="COEXIST">COEXIST</option><option value="DELETE">DELETE</option></select></div>';
+  if (!filtered.length) { el.innerHTML = html + '<div class="obs-empty">暂无演化记录</div>'; return; }
+  html += filtered.map(function(e) {
+    var ch = '';
+    if (e.old_data && e.new_data) {
+      var ov = e.old_data.value || e.old_data.content || '', nv = e.new_data.value || e.new_data.content || '';
+      ch = (ov && nv) ? '<div class="obs-ev-change">'+escapeHtml(ov)+' <span class="obs-ev-arrow">→</span> '+escapeHtml(nv)+'</div>' : (nv ? '<div class="obs-ev-change">'+escapeHtml(nv)+'</div>' : '');
+    } else if (e.new_data) { var nv2 = e.new_data.value||e.new_data.content||''; if(nv2) ch='<div class="obs-ev-change">'+escapeHtml(nv2)+'</div>'; }
+    else if (e.old_data) { var ov2 = e.old_data.value||e.old_data.content||''; if(ov2) ch='<div class="obs-ev-change">删除: '+escapeHtml(ov2)+'</div>'; }
+    return '<div class="obs-event ' + e.event + '"><div class="obs-ev-header"><span class="obs-ev-layer">' + escapeHtml(e.layer)+' | '+escapeHtml(e.event) + '</span><span class="obs-ev-time">' + fmtTime(e.created_at) + '</span></div>' + ch + (e.reason?'<div class="obs-ev-reason">'+escapeHtml(e.reason)+'</div>':'') + '<div class="obs-ev-reason">来源: '+escapeHtml(e.source||'system')+'</div></div>';
+  }).join('');
+  el.innerHTML = html;
+}
+
+function showEvidence(idsStr) {
+  var ids = idsStr.split(',').filter(Boolean);
+  if (!ids.length) return;
+  var l1Map = {}; ((state.obsLayers&&state.obsLayers.l1)||[]).forEach(function(m){l1Map[m.id]=m;});
+  var l2Map = {}; ((state.obsLayers&&state.obsLayers.l2)||[]).forEach(function(m){l2Map[m.id]=m;});
+  var lines = [];
+  ids.forEach(function(id) { if(l1Map[id]) lines.push('[L1] '+l1Map[id].content); else if(l2Map[id]) lines.push('[L2] '+l2Map[id].content); else lines.push('['+id.substring(0,8)+'] 来源事实已不可用'); });
+  alert(lines.join('\n') || '无证据');
 }
 
 async function deleteMemory(id) {
@@ -1252,6 +1601,7 @@ async function deleteMemory(id) {
     await fetch(state.apiUrl + '/v1/users/' + state.userId + '/memories/' + id + '?tenant_id=' + state.tenant, { method: 'DELETE' });
     showToast('已删除');
     await refreshMemories();
+    await refreshObservation();
   } catch (e) {
     showToast('删除失败');
   }
@@ -1261,27 +1611,22 @@ async function deleteMemory(id) {
 async function runIsolationTest() {
   if (!state.connected) { showToast('未连接'); return; }
   showLoading('正在测试用户隔离...');
-
-  const fakeUser = state.userId + '_isol_test';
+  var fakeUser = state.userId + '_isol_test';
   try {
-    const resp = await fetch(state.apiUrl + '/v1/memories/search', {
+    var resp = await fetch(state.apiUrl + '/v1/memories/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tenant_id: state.tenant,
-        user_id: fakeUser,
-        query: '空调温度',
-        top_k: 5
-      })
+      body: JSON.stringify({ tenant_id: state.tenant, user_id: fakeUser, query: '空调温度', top_k: 5 })
     });
-    const data = await resp.json();
-    const hits = data.memories || [];
-    const isolated = hits.length === 0;
-
-    document.getElementById('isoOtherStatus').textContent = isolated ? '隔离正常' : '隔离失败!';
-    document.getElementById('isoOtherStatus').className = 'val ' + (isolated ? '' : 'fail');
-
-    showToast(isolated ? '隔离测试通过：其他用户无法查到你的记忆' : '隔离测试失败：其他用户可见你的记忆！');
+    var data = await resp.json();
+    var hits = data.memories || [];
+    var isolated = hits.length === 0;
+    var statusEl = document.getElementById('isoOtherStatus');
+    if (statusEl) {
+      statusEl.textContent = isolated ? '隔离正常' : '隔离失败!';
+      statusEl.className = 'obs-tag ' + (isolated ? 'active' : 'superseded');
+    }
+    showToast(isolated ? '隔离测试通过' : '隔离测试失败！');
   } catch (e) {
     showToast('测试失败: ' + e.message);
   } finally {

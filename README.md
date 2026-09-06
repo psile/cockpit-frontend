@@ -305,3 +305,45 @@ start.bat
 |--------|--------|--------|
 | 后端记忆服务地址 | http://10.133.72.161:20142 | 登录页输入框 |
 | LLM 代理地址 | http://127.0.0.1:8767 | 登录页输入框 |
+
+## 记忆观测面板
+
+右侧面板为"记忆观测"区域，展示当前用户在数据库中真实保存的全部记忆及其演化历史。与中间对话区域（回答"本轮为什么这样回答"）不同，右侧区域回答"数据库长期保存了什么、如何变化"。
+
+### 标签页
+
+| 标签 | 展示内容 |
+|------|----------|
+| 总览 | L1/L2/L3 总数、L2 active/complete、L3 active/superseded、今日演化事件数、自动遗忘状态、隔离测试 |
+| L1 事实 | 全部 L1 原子事实：content、source、scene、occupant_id、metadata、删除按钮 |
+| L2 情景 | 全部 L2 事件：摘要、episode_status、occurred_at、confidence、来源 L1 |
+| L3 画像 | 全部 L3 信念：attribute、value、conditions、stability、status、confidence、evidence |
+| 演化记录 | 审计事件倒序：时间、层级、事件类型、旧→新、reason、source，支持过滤 |
+
+### 开发者模式
+
+观测面板完整内容仅在开发者模式开启时显示。关闭时显示简化版"已启用记忆"。
+
+### 接口依赖
+
+- `GET /v1/users/{id}/memory-layers` — 加载 L1/L2/L3
+- `GET /v1/users/{id}/memory-events` — 加载演化记录
+- `POST /v1/memories` 写入后自动刷新观测
+- `DELETE` 删除后自动刷新观测
+
+### 数据刷新流程
+
+1. 登录：/health → 加载记忆 → /memory-layers → /memory-events → 渲染
+2. 对话写入后：刷新 memory-layers + memory-events
+3. 删除后：同上
+4. 观测失败：不影响对话，显示错误+重试按钮
+
+### 常见错误排查
+
+| 问题 | 解决 |
+|------|------|
+| 右侧"加载失败" | 后端未应用 migrations/006，或 /memory-layers 返回错误 |
+| L1/L2/L3 均空 | tenant_id 不匹配或用户无记忆 |
+| 演化记录空 | 审计表未创建，执行 desaymem-migrate apply |
+| L2 来源"已不可用" | 来源 L1 已删除，正常行为 |
+| L3"已被替代" | belief 被 SUPERSEDE，旧 belief 仍保留 |
