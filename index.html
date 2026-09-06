@@ -1117,6 +1117,8 @@ async function sendMessage() {
     showLoading('检索记忆中...');
     t_mem_start = performance.now();
     try {
+      const searchCtrl = new AbortController();
+      const searchTimer = setTimeout(() => searchCtrl.abort(), 10000);
       const searchResp = await fetch(state.apiUrl + '/v1/memories/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1125,8 +1127,10 @@ async function sendMessage() {
           user_id: state.userId,
           query: text,
           top_k: 5
-        })
+        }),
+        signal: searchCtrl.signal
       });
+      clearTimeout(searchTimer);
       if (searchResp.ok) {
         const searchData = await searchResp.json();
         memoryDetails = (searchData.memories || []).map(m => ({
@@ -1138,6 +1142,7 @@ async function sendMessage() {
       }
     } catch (e) {
       // 记忆检索失败不阻断对话
+      if (e.name === 'AbortError') console.warn('记忆检索超时（10秒）');
     }
     t_mem_end = performance.now();
 
@@ -1152,6 +1157,8 @@ async function sendMessage() {
 
     t_llm_start = performance.now();
     try {
+      const llmCtrl = new AbortController();
+      const llmTimer = setTimeout(() => llmCtrl.abort(), 15000);
       const proxyResp = await fetch(state.llmProxyUrl + '/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1165,8 +1172,10 @@ async function sendMessage() {
             occupant_id: state.occupant
           },
           tool_results: []
-        })
+        }),
+        signal: llmCtrl.signal
       });
+      clearTimeout(llmTimer);
       if (!proxyResp.ok) throw new Error('HTTP ' + proxyResp.status);
       const proxyData = await proxyResp.json();
       if (proxyData.error) {
@@ -1183,8 +1192,8 @@ async function sendMessage() {
       generationSucceeded = true;
     } catch (e) {
       reply = '车机助手暂时无法回答，请稍后重试。';
-      errorDetail = errorDetail || e.message;
-      console.warn('LLM proxy error:', e.message);
+      errorDetail = (e.name === 'AbortError') ? '决策超时（15秒），模型服务可能繁忙' : (errorDetail || e.message);
+      console.warn('LLM proxy error:', e.name === 'AbortError' ? 'timeout (15s)' : e.message);
     }
     t_llm_end = performance.now();
 
@@ -1416,7 +1425,7 @@ async function refreshObservation() {
   state.obsError = null;
   try {
     const [layersResp, eventsResp] = await Promise.all([
-      fetch(state.apiUrl + '/v1/users/' + state.userId + '/memory-layers?tenant_id=' + state.tenant + '&include_inactive=true&l1_limit=500&l2_limit=500&l3_limit=500'),
+      fetch(state.apiUrl + '/v1/users/' + state.userId + '/memory-layers?tenant_id=' + state.tenant + '&occupant_id=' + encodeURIComponent(state.occupant || 'driver') + '&include_inactive=true&l1_limit=500&l2_limit=500&l3_limit=500'),
       fetch(state.apiUrl + '/v1/users/' + state.userId + '/memory-events?tenant_id=' + state.tenant + '&limit=100')
     ]);
     if (!layersResp.ok || !eventsResp.ok) {
